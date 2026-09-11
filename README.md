@@ -36,7 +36,7 @@ O projeto utiliza:
 - Domicílios ligados à rede geral de esgoto ou pluvial;
 - Percentual de cobertura da rede geral de esgoto.
 
-Os dados utilizados são referentes ao **Censo Demográfico de 2010**.
+
 
 ---
 
@@ -134,8 +134,7 @@ Sexo:
 Situação do domicílio:
 0 = Total
 
-Ano:
-2010
+
 
 Nível territorial:
 N102 = Bairro
@@ -168,8 +167,7 @@ Tipo de esgotamento sanitário:
 0 = Total
 92855 = Rede geral de esgoto ou pluvial
 
-Ano:
-2010
+
 
 Nível territorial:
 N102 = Bairro
