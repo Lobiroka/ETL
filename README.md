@@ -698,3 +698,46 @@ Projeto desenvolvido para a disciplina de Engenharia de Dados.
 ## Tema
 
 **Smart City — Análise de População e Saneamento dos Bairros do Recife.**
+
+
+---
+
+# Orquestração com Prefect
+
+A pipeline também pode ser executada e monitorada com o Prefect. O arquivo
+`orchestrate_prefect.py` define cada etapa como uma `@task` e coordena as
+dependências por meio do `@flow`.
+
+## Instalação
+
+Ative o ambiente virtual e instale as dependências:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Configure as variáveis `MONGODB_URI` e `DATABASE_URL` no arquivo `.env`.
+
+## Executar a pipeline
+
+```bash
+python orchestrate_prefect.py
+```
+
+## Acompanhar pelo painel local
+
+Em um terminal, inicie o servidor:
+
+```bash
+prefect server start
+```
+
+Em seguida, abra `http://127.0.0.1:4200` no navegador. Em outro terminal,
+com o mesmo ambiente virtual ativado, execute a pipeline com
+`python orchestrate_prefect.py`. A execução deverá aparecer no painel.
+
+O fluxo registra as etapas, estados e logs. Algumas tarefas possuem novas
+tentativas automáticas em caso de falha. A execução depende de acesso à API
+do IBGE e de credenciais válidas para MongoDB Atlas e NeonDB.
