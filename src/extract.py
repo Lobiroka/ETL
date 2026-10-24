@@ -1,8 +1,7 @@
-import os
-
 import requests
-from dotenv import load_dotenv
 from pymongo import MongoClient
+
+from src.config import MONGODB_URI
 
 
 class Extract:
@@ -44,8 +43,6 @@ class Extract:
         """
         Inicializa as configurações utilizadas na extração.
         """
-
-        load_dotenv()
 
         self.base_url = (
             "https://apisidra.ibge.gov.br/values"
@@ -174,7 +171,6 @@ class Extract:
 
     def extract_collection_from_mongo(
         self,
-        mongo_uri: str,
         database: str,
         collection: str
     ) -> list[dict]:
@@ -182,7 +178,6 @@ class Extract:
         Lê os documentos de uma coleção do MongoDB.
 
         Parâmetros:
-            mongo_uri: URI de conexão com o MongoDB.
             database: Nome do banco de dados.
             collection: Nome da coleção.
 
@@ -190,17 +185,25 @@ class Extract:
             Lista de documentos encontrados.
         """
 
-        client = MongoClient(mongo_uri)
+        if not MONGODB_URI:
+            raise ValueError("A variável MONGODB_URI não foi definida no .env")
+        client = MongoClient(MONGODB_URI)
 
         try:
             db = client[database]
 
-            return list(
-                db[collection].find(
-                    {},
-                    {"_id": 0}
-                )
+            coll = db[collection]
+            latest = coll.find_one(
+                {"data_extracao": {"$exists": True}},
+                {"_id": 0, "data_extracao": 1},
+                sort=[("data_extracao", -1)],
             )
+            if latest is None:
+                return list(coll.find({}, {"_id": 0}))
+            return list(coll.find(
+                {"data_extracao": latest["data_extracao"]},
+                {"_id": 0},
+            ))
 
         finally:
             client.close()

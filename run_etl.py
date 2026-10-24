@@ -34,7 +34,9 @@ def main():
         populacao = ext.bairros_recife("recife")
 
         print(
-            f"População: {len(populacao) - 1} bairros encontrados."
+            "População: "
+            f"{sum(1 for item in populacao if str(item.get('D1C', '')).strip().isdigit())} "
+            "bairros encontrados."
         )
 
         # ==========================================================
@@ -64,12 +66,14 @@ def main():
 
         print(
             f"Saneamento total: "
-            f"{len(saneamento_total) - 1} bairros encontrados."
+            f"{sum(1 for item in saneamento_total if str(item.get('D1C', '')).strip().isdigit())} "
+            "bairros encontrados."
         )
 
         print(
             f"Rede geral de esgoto: "
-            f"{len(saneamento_rede) - 1} bairros encontrados."
+            f"{sum(1 for item in saneamento_rede if str(item.get('D1C', '')).strip().isdigit())} "
+            "bairros encontrados."
         )
 
         print()
@@ -98,14 +102,12 @@ def main():
         )
 
         populacao_mongo = ext.extract_collection_from_mongo(
-            load.mongo_uri,
             DB_NAME,
             COLLECTION_POPULACAO
         )
 
         saneamento_total_mongo = (
             ext.extract_collection_from_mongo(
-                load.mongo_uri,
                 DB_NAME,
                 COLLECTION_SANEAMENTO_TOTAL
             )
@@ -113,7 +115,6 @@ def main():
 
         saneamento_rede_mongo = (
             ext.extract_collection_from_mongo(
-                load.mongo_uri,
                 DB_NAME,
                 COLLECTION_SANEAMENTO_REDE
             )
@@ -147,6 +148,16 @@ def main():
             f"Total de bairros processados: {len(df)}"
         )
 
+        bronze_pop = sum(
+            1 for item in populacao_mongo
+            if str(item.get("D1C", "")).strip().isdigit()
+        )
+        print(f"Bronze população (última carga): {bronze_pop} registros")
+        if len(df) != bronze_pop:
+            raise RuntimeError(
+                f"Contagem divergente: bronze={bronze_pop}, final={len(df)}"
+            )
+
         # ==========================================================
         # ETAPA 5 - NEONDB
         # ==========================================================
@@ -158,6 +169,14 @@ def main():
             df,
             NEON_TABLE
         )
+
+        neon_count = load.count_neondb(NEON_TABLE)
+        print(f"NeonDB tabela final: {neon_count} registros")
+        if neon_count != bronze_pop:
+            raise RuntimeError(
+                f"Contagem divergente após a carga: bronze={bronze_pop}, "
+                f"tabela final={neon_count}"
+            )
 
         # ==========================================================
         # FINALIZAÇÃO

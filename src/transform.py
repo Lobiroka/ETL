@@ -1,6 +1,15 @@
 import pandas as pd
 
 
+MISSING_VALUES = {"", "-", "...", "..", "…", "N/A", "NA", "NULL"}
+
+
+def _numeric_or_missing(value):
+    if value is None or str(value).strip().upper() in MISSING_VALUES:
+        return pd.NA
+    return pd.to_numeric(value, errors="coerce")
+
+
 class Transform:
     """Limpa e integra os dados do IBGE."""
 
@@ -34,21 +43,15 @@ class Transform:
             how="left"
         )
 
-        df["domicilios_total"] = (
-            df["domicilios_total"]
-            .fillna(0)
-            .astype(int)
+        for column in ("populacao", "domicilios_total", "domicilios_rede_geral"):
+            df[column] = pd.to_numeric(df[column], errors="coerce").astype("Int64")
+
+        df["percentual_rede_esgoto"] = pd.NA
+        mask = (
+            df["domicilios_total"].notna()
+            & (df["domicilios_total"] > 0)
+            & df["domicilios_rede_geral"].notna()
         )
-
-        df["domicilios_rede_geral"] = (
-            df["domicilios_rede_geral"]
-            .fillna(0)
-            .astype(int)
-        )
-
-        df["percentual_rede_esgoto"] = 0.0
-
-        mask = df["domicilios_total"] > 0
 
         df.loc[mask, "percentual_rede_esgoto"] = (
             df.loc[mask, "domicilios_rede_geral"]
@@ -57,6 +60,14 @@ class Transform:
         ).round(2)
 
         df["ano"] = 2010
+        extraction_dates = [
+            pd.to_datetime(item.get("data_extracao"), utc=True, errors="coerce")
+            for item in populacao
+        ]
+        valid_dates = [date for date in extraction_dates if not pd.isna(date)]
+        df["data_extracao"] = (
+            max(valid_dates) if valid_dates else pd.Timestamp.now(tz="UTC")
+        )
 
         colunas = [
             "codigo_bairro",
@@ -65,14 +76,17 @@ class Transform:
             "domicilios_total",
             "domicilios_rede_geral",
             "percentual_rede_esgoto",
-            "ano"
+            "ano",
+            "data_extracao",
         ]
 
-        return (
+        result = (
             df[colunas]
             .sort_values("bairro")
             .reset_index(drop=True)
+            .astype(object)
         )
+        return result.where(pd.notna(result), None)
 
     @staticmethod
     def _normalizar_populacao(data):
@@ -84,16 +98,14 @@ class Transform:
 
         rows = []
 
-        for item in data[1:]:
+        for item in data:
+            codigo = str(item.get("D1C", "")).strip()
+            if not codigo.isdigit():
+                continue
             rows.append({
-                "codigo_bairro": str(
-                    item.get("D1C", "")
-                ),
+                "codigo_bairro": codigo,
                 "bairro": item.get("D1N", ""),
-                "populacao": pd.to_numeric(
-                    item.get("V"),
-                    errors="coerce"
-                )
+                "populacao": _numeric_or_missing(item.get("V")),
             })
 
         df = pd.DataFrame(rows)
@@ -101,12 +113,6 @@ class Transform:
         df = df[
             df["codigo_bairro"] != ""
         ]
-
-        df["populacao"] = (
-            df["populacao"]
-            .fillna(0)
-            .astype(int)
-        )
 
         return df.drop_duplicates(
             "codigo_bairro"
@@ -122,15 +128,13 @@ class Transform:
 
         rows = []
 
-        for item in data[1:]:
+        for item in data:
+            codigo = str(item.get("D1C", "")).strip()
+            if not codigo.isdigit():
+                continue
             rows.append({
-                "codigo_bairro": str(
-                    item.get("D1C", "")
-                ),
-                nome_coluna: pd.to_numeric(
-                    item.get("V"),
-                    errors="coerce"
-                )
+                "codigo_bairro": codigo,
+                nome_coluna: _numeric_or_missing(item.get("V")),
             })
 
         df = pd.DataFrame(rows)

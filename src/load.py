@@ -1,13 +1,12 @@
-import os
+from datetime import datetime, timezone
 
 import pandas as pd
 import psycopg
-from dotenv import load_dotenv
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 
+from src.config import DATABASE_URL, MONGODB_URI, require_config
 
-load_dotenv()
 
 
 class Load:
@@ -17,18 +16,8 @@ class Load:
     """
 
     def __init__(self):
-        self.mongo_uri = os.getenv("MONGODB_URI")
-        self.database_url = os.getenv("DATABASE_URL")
-
-        if not self.mongo_uri:
-            raise ValueError(
-                "A variável MONGODB_URI não foi definida no .env"
-            )
-
-        if not self.database_url:
-            raise ValueError(
-                "A variável DATABASE_URL não foi definida no .env"
-            )
+        self.mongo_uri = require_config("MONGODB_URI", MONGODB_URI)
+        self.database_url = require_config("DATABASE_URL", DATABASE_URL)
 
         self.client = MongoClient(
             self.mongo_uri,
@@ -59,8 +48,11 @@ class Load:
         collection = self.client[db_name][collection_name]
 
         if data:
-            collection.delete_many({})
-            collection.insert_many(data)
+            extracted_at = datetime.now(timezone.utc)
+            collection.insert_many([
+                {**item, "data_extracao": extracted_at}
+                for item in data
+            ])
 
         print(
             f"MongoDB Atlas: coleção "
@@ -88,8 +80,12 @@ class Load:
             domicilios_total INTEGER,
             domicilios_rede_geral INTEGER,
             percentual_rede_esgoto NUMERIC(5, 2),
-            ano INTEGER
+            ano INTEGER,
+            data_extracao TIMESTAMPTZ
         );
+
+        ALTER TABLE {nome_tabela}
+            ADD COLUMN IF NOT EXISTS data_extracao TIMESTAMPTZ;
         """
 
         insert_sql = f"""
@@ -100,10 +96,11 @@ class Load:
             domicilios_total,
             domicilios_rede_geral,
             percentual_rede_esgoto,
-            ano
+            ano,
+            data_extracao
         )
         VALUES (
-            %s, %s, %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, %s, %s, %s
         )
         ON CONFLICT (codigo_bairro)
         DO UPDATE SET
@@ -112,7 +109,8 @@ class Load:
             domicilios_total = EXCLUDED.domicilios_total,
             domicilios_rede_geral = EXCLUDED.domicilios_rede_geral,
             percentual_rede_esgoto = EXCLUDED.percentual_rede_esgoto,
-            ano = EXCLUDED.ano;
+            ano = EXCLUDED.ano,
+            data_extracao = EXCLUDED.data_extracao;
         """
 
         with psycopg.connect(self.database_url) as conn:
@@ -128,11 +126,12 @@ class Load:
                         (
                             row["codigo_bairro"],
                             row["bairro"],
-                            int(row["populacao"]),
-                            int(row["domicilios_total"]),
-                            int(row["domicilios_rede_geral"]),
-                            float(row["percentual_rede_esgoto"]),
-                            int(row["ano"])
+                            None if pd.isna(row["populacao"]) else int(row["populacao"]),
+                            None if pd.isna(row["domicilios_total"]) else int(row["domicilios_total"]),
+                            None if pd.isna(row["domicilios_rede_geral"]) else int(row["domicilios_rede_geral"]),
+                            None if pd.isna(row["percentual_rede_esgoto"]) else float(row["percentual_rede_esgoto"]),
+                            int(row["ano"]),
+                            pd.to_datetime(row["data_extracao"], utc=True).to_pydatetime(),
                         )
                     )
 
@@ -142,3 +141,12 @@ class Load:
             f"NeonDB: tabela '{nome_tabela}' "
             f"atualizada com sucesso."
         )
+
+    def count_neondb(
+        self,
+        nome_tabela: str = "recife_populacao_saneamento",
+    ) -> int:
+        with psycopg.connect(self.database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT COUNT(*) FROM {nome_tabela}")
+                return cursor.fetchone()[0]

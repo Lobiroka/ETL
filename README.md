@@ -77,6 +77,8 @@ ETL-main/
 ├── README.md
 ├── requirements.txt
 ├── run_etl.py
+├── dashboard/
+│   └── app.py
 │
 ├── exemplos/
 ├── jsons/
@@ -84,6 +86,7 @@ ETL-main/
 │
 └── src/
     ├── __init__.py
+    ├── config.py
     ├── extract.py
     ├── transform.py
     └── load.py
@@ -290,6 +293,52 @@ As credenciais devem ser substituídas pelas informações dos respectivos servi
 ---
 
 # Segurança
+
+## Configuração do ambiente
+
+Crie `.env` a partir de `.env.example`. `src/config.py` carrega esse arquivo
+uma única vez por processo e centraliza `MONGODB_URI` e `DATABASE_URL`; os
+demais módulos importam essas configurações, sem chamar `os.getenv`.
+
+## Histórico, valores ausentes e completude
+
+Cada documento bruto gravado no MongoDB recebe `data_extracao` em UTC. As
+cargas anteriores são preservadas. A extração do MongoDB recupera apenas os
+documentos da carga mais recente de cada coleção.
+
+A transformação percorre todos os itens da resposta SIDRA e identifica o
+registro de cabeçalho pelo código territorial não numérico, sem depender de
+índices fixos como `[0]`. Na consulta atual à API, as três séries retornaram
+94 bairros cada e nenhum valor ausente ou não numérico. Mesmo assim, a
+transformação mapeia células vazias, `-`, `..`, `...`, `N/A` e `NA` para nulo,
+caso apareçam em consultas futuras; esses marcadores não viram zero. Zero
+numérico continua sendo zero, e o percentual fica nulo quando não há total
+válido de domicílios para calculá-lo.
+
+O pipeline compara a quantidade de códigos de bairro da última carga bruta
+com o resultado transformado e, depois da carga, com a contagem da tabela
+final no Neon. Divergências interrompem a execução para não ocultar perda de
+registros. A tabela final usa upsert por código e não apaga os dados existentes.
+
+## Dashboard Streamlit
+
+O dashboard consulta `recife_populacao_saneamento` no Neon usando
+`DATABASE_URL` do módulo de configuração. Ele oferece filtro por bairro,
+gráfico de cobertura de esgoto, indicadores de bairros, população e cobertura
+média e uma tabela dos dados filtrados.
+
+Na raiz do projeto, crie e ative um ambiente virtual antes de instalar as
+dependências. Isso evita a instalação no Python do sistema, que pode ser
+bloqueada por distribuições Linux com PEP 668:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m streamlit run dashboard/app.py
+```
+
+A captura do dashboard está em `outputs/dashboard.png`.
 
 O arquivo `.env` não deve ser versionado no Git.
 

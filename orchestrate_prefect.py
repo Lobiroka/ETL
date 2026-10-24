@@ -17,7 +17,9 @@ def extract_population() -> list[dict]:
     logger = get_run_logger()
     extractor = Extract()
     data = extractor.bairros_recife("recife")
-    logger.info("%s registros de população recebidos da API.", max(len(data) - 1, 0))
+    logger.info("%s registros de população recebidos da API.", sum(
+        1 for item in data if str(item.get("D1C", "")).strip().isdigit()
+    ))
     return data
 
 
@@ -28,8 +30,8 @@ def extract_sanitation() -> dict[str, list[dict]]:
     data = extractor.saneamento_recife("recife")
     logger.info(
         "Saneamento extraído: total=%s, rede geral=%s registros.",
-        max(len(data["total"]) - 1, 0),
-        max(len(data["rede_geral"]) - 1, 0),
+        sum(1 for item in data["total"] if str(item.get("D1C", "")).strip().isdigit()),
+        sum(1 for item in data["rede_geral"] if str(item.get("D1C", "")).strip().isdigit()),
     )
     return data
 
@@ -55,13 +57,13 @@ def read_mongodb(_raw_loaded: bool) -> dict:
     try:
         extractor = Extract()
         population = extractor.extract_collection_from_mongo(
-            loader.mongo_uri, DB_NAME, COLLECTION_POPULACAO
+            DB_NAME, COLLECTION_POPULACAO
         )
         sanitation_total = extractor.extract_collection_from_mongo(
-            loader.mongo_uri, DB_NAME, COLLECTION_SANEAMENTO_TOTAL
+            DB_NAME, COLLECTION_SANEAMENTO_TOTAL
         )
         sanitation_network = extractor.extract_collection_from_mongo(
-            loader.mongo_uri, DB_NAME, COLLECTION_SANEAMENTO_REDE
+            DB_NAME, COLLECTION_SANEAMENTO_REDE
         )
     finally:
         loader.close()
@@ -87,6 +89,15 @@ def transform_data(data: dict):
         data["population"],
         data["sanitation"],
     )
+    bronze_population_count = sum(
+        1 for item in data["population"]
+        if str(item.get("D1C", "")).strip().isdigit()
+    )
+    if len(dataframe) != bronze_population_count:
+        raise RuntimeError(
+            f"Contagem divergente: bronze={bronze_population_count}, "
+            f"final={len(dataframe)}"
+        )
     logger.info("%s bairros preparados para carga no NeonDB.", len(dataframe))
     return dataframe.to_dict(orient="records")
 
@@ -100,10 +111,16 @@ def load_neondb(records: list[dict]) -> int:
     loader = Load()
     try:
         loader.load_neondb(dataframe, NEON_TABLE)
+        final_count = loader.count_neondb(NEON_TABLE)
+        if final_count != len(records):
+            raise RuntimeError(
+                f"Contagem divergente após a carga: registros da carga={len(records)}, "
+                f"tabela final={final_count}"
+            )
     finally:
         loader.close()
-    logger.info("%s bairros carregados/atualizados no NeonDB.", len(dataframe))
-    return len(dataframe)
+    logger.info("%s bairros existentes na tabela final do NeonDB.", final_count)
+    return final_count
 
 
 @flow(name="ETL Smart City Recife", log_prints=True)
