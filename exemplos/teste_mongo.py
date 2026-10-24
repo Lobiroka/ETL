@@ -1,14 +1,12 @@
+"""Exemplo MongoDB. Execute pela raiz com `python -m exemplos.teste_mongo`."""
+
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
+from src.config import MONGODB_URI, require_config
 
-MONGO_URI = os.getenv("MONGODB_URI")
 
-# crie um env e guarde as credenciais
-uri = MONGO_URI
+uri = require_config("MONGODB_URI", MONGODB_URI)
 
 # Create a new client and connect to the server
 client = MongoClient(uri, server_api=ServerApi("1"))
