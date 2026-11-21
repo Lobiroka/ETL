@@ -1,0 +1,10 @@
+requests
+pymongo
+python-dotenv
+pandas
+psycopg[binary]
+prefect
+streamlit
+fastmcp>=2.0,<3
+openai>=1.0,<3
+
